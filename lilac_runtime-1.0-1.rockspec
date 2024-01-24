@@ -16,7 +16,7 @@ description = {
 	license = "Unlicense"
 }
 dependencies = {
-	"lua >= 5.2, <= 5.4"
+	"lua >= 5.2, < 5.5"
 }
 build = {
 	type = "builtin",
