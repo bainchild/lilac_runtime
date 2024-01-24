@@ -16,7 +16,7 @@ description = {
 	license = "Unlicense"
 }
 dependencies = {
-	"lua >= 5.2, < 5.5"
+	"lua >= 5.2, <= 5.4"
 }
 build = {
 	type = "builtin",
@@ -27,7 +27,7 @@ build = {
 	},
 	install = {
 		bin = {
-			"bin/lilac_start"
+			"bin/lilac_run"
 		}
 	}
 }
