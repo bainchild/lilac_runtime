@@ -35,6 +35,16 @@ do
       end
       error("ummm.... ("..type(o)..")")
    end
+   function objmt:__sub(o)
+      if obj.is(o) then
+         return rawget(self,"real")-rawget(o,"real")
+      elseif ptr.is(o) then
+         return rawget(self,"real")-rawget(o,"obj")
+      else
+         return rawget(self,"real")-o
+      end
+      error("ummm.... ("..type(o)..")")
+   end
    function objmt:__lt(o)
       if obj.is(o) then
          return rawget(self,"real")<rawget(o,"real")
@@ -57,7 +67,7 @@ do
    end
    function objmt:__eq(o)
       if obj.is(o) then
-         return rawget(self,"real")==rawget(o,"List")[o]
+         return rawget(self,"real")==rawget(o,"real")
       elseif ptr.is(o) then
          return rawget(self,"real")==rawget(o,"obj")
       else
@@ -93,6 +103,26 @@ do
    end
    function ptrmt:__tostring()
       return "*"..tostring(rawget(self,"obj"))
+   end
+   function ptrmt:__add(o)
+      if ptr.is(o) then
+         return rawget(self,"real")+rawget(o,"obj")
+      elseif obj.is(o) then
+         return rawget(self,"real")+rawget(o,"real")
+      else
+         return rawget(self,"real")+o
+      end
+      error("ummm.... ("..type(o)..")")
+   end
+   function ptrmt:__sub(o)
+      if ptr.is(o) then
+         return rawget(self,"real")-rawget(o,"obj")
+      elseif obj.is(o) then
+         return rawget(self,"real")-rawget(o,"real")
+      else
+         return rawget(self,"real")-o
+      end
+      error("ummm.... ("..type(o)..")")
    end
    function ptrmt:__lt(o)
       if ptr.is(o) then
