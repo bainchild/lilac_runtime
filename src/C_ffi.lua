@@ -31,6 +31,7 @@ do
       elseif ptr.is(o) then
          return rawget(self,"real")+rawget(o,"obj")
       else
+         print(rawget(self,"real"),type(o))
          return rawget(self,"real")+o
       end
       error("ummm.... ("..type(o)..")")
@@ -106,21 +107,21 @@ do
    end
    function ptrmt:__add(o)
       if ptr.is(o) then
-         return rawget(self,"real")+rawget(o,"obj")
+         return ptr.new(rawget(self,"obj"),rawget(self,"addr")+rawget(o,"obj"))
       elseif obj.is(o) then
-         return rawget(self,"real")+rawget(o,"real")
+         return ptr.new(rawget(self,"obj"),rawget(self,"addr")+rawget(o,"real"))
       else
-         return rawget(self,"real")+o
+         return ptr.new(rawget(self,"obj"),rawget(self,"addr")+o)
       end
       error("ummm.... ("..type(o)..")")
    end
    function ptrmt:__sub(o)
       if ptr.is(o) then
-         return rawget(self,"real")-rawget(o,"obj")
+         return ptr.new(rawget(self,"obj"),rawget(self,"addr")-rawget(o,"obj"))
       elseif obj.is(o) then
-         return rawget(self,"real")-rawget(o,"real")
+         return ptr.new(rawget(self,"obj"),rawget(self,"addr")-rawget(o,"real"))
       else
-         return rawget(self,"real")-o
+         return ptr.new(rawget(self,"obj"),rawget(self,"addr")-o)
       end
       error("ummm.... ("..type(o)..")")
    end
