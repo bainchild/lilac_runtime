@@ -20,13 +20,13 @@ dependencies = {
 build = {
 	type = "builtin",
 	modules = {
-		["c_runtime.C_ffi"] = "C_ffi.lua",
-		["c_runtime.libc"] = "libc.lua",
-		["c_runtime.gnu_cpp_mangle"] = "gnu_cpp_mangle.lua"
+		["c_runtime.C_ffi"] = "src/C_ffi.lua",
+		["c_runtime.libc"] = "src/libc.lua",
+		["c_runtime.gnu_cpp_mangle"] = "src/gnu_cpp_mangle.lua"
 	},
 	install = {
 		bin = {
-			"lilac_start"
+			"bin/lilac_start"
 		}
 	}
 }
