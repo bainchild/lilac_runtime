@@ -1,5 +1,5 @@
-if ____C == nil then require('c_runtime.C_ffi') end
 local C = ____C
+if C == nil then C=require('lilac_runtime.C_ffi') end
 NULL = C.Ptr(C.Cst(0))
 local m = {}
 local function wrap(a,retptr)
@@ -420,14 +420,37 @@ end,true)
 -- BIG TODO: argz + envz
 -- BIG TWODO: searching and sorting
 -- and the pattern matching...
+---@diagnostic disable-next-line: unused-local
+m.open = wrap(function(path)
+   -- path = C.Read("Ptr<char[]>",C.Memory[path])
+   -- C.Read("char[]",C.Read("Ptr",rawget(path,"addr")))
+   repeat
+      if C.Object.is(path) then
+         path=rawget(path,"real")
+      elseif C.Pointer.is(path) then
+         path=rawget(path,"obj")
+      end
+   until not C.Pointer.is(path)
+   print("open("..string.format("%q",C.Read("char[]",rawget(path,"region").begin))..")")
+   return -1
+end,false)
 function m.printf(fs,...)
    if C.Object.is(fs) or C.Pointer.is(fs) then
       fs=fs[C.Escape]
    end
    local args = {...}
    for i,v in next, args do
-      if C.Object.is(v) or C.Pointer.is(v) then
-         args[i] = v[C.Escape]
+      if C.Pointer.is(v) then
+         repeat
+            if C.Object.is(v) then
+               v=rawget(v,"real")
+            elseif C.Pointer.is(v) then
+               v=rawget(v,"obj")
+            end
+         until not C.Pointer.is(v)
+      end
+      if C.Object.is(v) then
+         args[i] = C.Read("char[]",rawget(v,"region").begin)
       end
    end
    io.write(fs:format(table.unpack(args)))

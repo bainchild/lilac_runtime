@@ -25,6 +25,9 @@ do
    function objmt:__tostring()
       return tostring(rawget(self,"real"))
    end
+   function objmt:__unm()
+      return -rawget(self,"real")
+   end
    function objmt:__add(o)
       if obj.is(o) then
          return rawget(self,"real")+rawget(o,"real")
@@ -209,7 +212,7 @@ function C.Serialize(t)
    if type(t)=="string" then
       return t
    elseif type(t)=="number" then
-      return (("%04x"):format(t):gsub("%x%x",function(a) return string.char(tonumber(a,16)) end))
+      return (("%s%04x"):format((t<0 and "-" or ""),math.abs(t)):gsub("%x%x",function(a) return string.char(tonumber(a,16)) end))
    elseif type(t)=="table" then
       -- assume array
       local s = ""
@@ -243,17 +246,20 @@ function C.SerializeByType(v,t)
 end
 function C.Deserialize(typ,bytes)
    if typ=="int" or typ:match("Ptr") or typ:match("Ptr%b<>") then
-      return tonumber(string.format("%02x%02x%02x%02x",(unpack or table.unpack)(bytes)),16)
+      return tonumber(string.format("%02x%02x%02x%02x",(unpack or table.unpack)(bytes),0,0,0,0),16)
    elseif typ=="byte" or typ=="void" then
       return bytes[1]
    elseif typ:match("char%[%d*%]") then
       local size = typ:match("char%[(%d*)%]")
-      if size==nil then
+      if size==nil or size=="" then
          for i=1,#bytes do
-            if bytes[i]=="\0" then
+            if bytes[i]==0 then
                size=i;break
             end
          end
+         if size=="" then size=#bytes end
+      else
+         size = tonumber(size)
       end
       local c=""
       for i=1,size do
@@ -269,6 +275,7 @@ function C.Deserialize(typ,bytes)
             table.insert(t,C.Deserialize(sub,{(unpack or table.unpack)(bytes,i*C.SizeOfTypeStr(sub),(i+1)*C.SizeOfTypeStr(sub))}))
          until #bytes<C.SizeOfTypeStr(sub)
       else
+         size = tonumber(size)
          for i=1,size do
             table.insert(t,C.Deserialize(sub,{(unpack or table.unpack)(bytes,i*C.SizeOfTypeStr(sub),(i+1)*C.SizeOfTypeStr(sub))}))
          end
@@ -284,9 +291,12 @@ function C.Write(typ,ptr,val)
    return ptr
 end
 function C.Read(typ,ptr)
-   local len = -1
+   local len = 0
    if typ=="char[]" then
-      repeat len=len+1 until C.Memory[len]==0
+      while C.Memory[len]~=0 do
+         len=len+1
+      end
+      len=len+1
    else
       len = C.SizeOfType(len)
    end
@@ -331,6 +341,7 @@ function C.Set(a,b)
       end
    end
    rawset(a,"real",b)
+   return b
 end
 function mem_intersection(a,b)
    for _,v in next, C.Objects do
