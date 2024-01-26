@@ -1,3 +1,4 @@
+---@diagnostic disable: redefined-local
 if ___C~=nil then return ____C end
 local function find(a,b)
    for i,v in next, a do if rawequal(v,b) then return i end end
@@ -29,17 +30,19 @@ do
       return -rawget(self,"real")
    end
    function objmt:__add(o)
+      if not obj.is(self) and obj.is(o) then self,o = o,self end
       if obj.is(o) then
          return rawget(self,"real")+rawget(o,"real")
       elseif ptr.is(o) then
          return rawget(self,"real")+rawget(o,"obj")
       else
-         print(rawget(self,"real"),type(o))
+         -- print(rawget(self,"real"),type(o))
          return rawget(self,"real")+o
       end
       error("ummm.... ("..type(o)..")")
    end
    function objmt:__sub(o)
+      if not obj.is(self) and obj.is(o) then self,o = o,self end
       if obj.is(o) then
          return rawget(self,"real")-rawget(o,"real")
       elseif ptr.is(o) then
@@ -50,6 +53,7 @@ do
       error("ummm.... ("..type(o)..")")
    end
    function objmt:__lt(o)
+      if not obj.is(self) and obj.is(o) then self,o = o,self end
       if obj.is(o) then
          return rawget(self,"real")<rawget(o,"real")
       elseif ptr.is(o) then
@@ -60,6 +64,7 @@ do
       error("ummm.... ("..type(o)..")")
    end
    function objmt:__le(o)
+      if not obj.is(self) and obj.is(o) then self,o = o,self end
       if obj.is(o) then
          return rawget(self,"real")<=rawget(o,"real")
       elseif ptr.is(o) then
@@ -70,6 +75,7 @@ do
       error("ummm.... ("..type(o)..")")
    end
    function objmt:__eq(o)
+      if not obj.is(self) and obj.is(o) then self,o = o,self end
       if obj.is(o) then
          return rawget(self,"real")==rawget(o,"real")
       elseif ptr.is(o) then
@@ -150,11 +156,11 @@ do
    end
    function ptrmt:__eq(o)
       if ptr.is(o) then
-         return rawget(self,"obj")==rawget(o,"obj")
+         return rawget(self,"addr")==rawget(o,"addr")
       elseif obj.is(o) then
-         return rawget(self,"obj")==rawget(o,"real")
+         return rawget(self,"addr")==rawget(o,"real")
       else
-         return rawget(self,"obj")==o
+         return rawget(self,"addr")==o
       end
       error("ummm.... ("..type(o)..")")
    end
@@ -167,7 +173,6 @@ do
    end
 end
 
-local void = 0
 local C;C = {
    Pointers = {}, -- obj -> *obj
    Objects = {},
@@ -306,7 +311,7 @@ function C.Deref(a)
    return find(C.Pointers,a)
 end
 function C.SizeOfTypeStr(typ)
-   for i,v in next, C.TypeSizes do
+   for _,v in next, C.TypeSizes do
       if typ:match(v[1]) then
          return (type(v[2])=="number" and v[2] or v[2](typ,typ:match(v[1])))
       end
@@ -395,6 +400,17 @@ function C.Allocate(obj)
    rawset(obj,"region",{begin=position,_end=position+size})
    return position
 end
+function C.AllocateSize(obj,size)
+   if rawget(obj,"region")~=nil then return -1 end
+   local position = C.GetFreeSpace(size)
+   -- print("alloc\t",position,size,C.TypeOf(obj))
+   if position==nil then
+      return -1
+   end
+   table.insert(C.Objects,obj)
+   rawset(obj,"region",{begin=position,_end=position+size})
+   return position
+end
 function C.Free(obj)
    if rawget(obj,"region") == nil then return -1 end
    C.FreedSinceLastAlloc = true
@@ -422,6 +438,19 @@ function C.Obj(a)
    end
    return ob
 end
+function C.EmptyObj(a,size)
+   local ob = C.Object.new()
+   rawset(ob,"real",a)
+   local add = C.AllocateWithSize(ob,size)
+   if add==-1 then
+      return -1
+   end
+   -- print("obj got "..add.." for address, ser is "..#ser.." bytes long, type is "..C.SizeOfType(ob).." bytes long")
+   for i=1,size do
+      C.Memory[add+i-1] = 0
+   end
+   return ob
+end
 function C.Ptr(a)
    local pt = ptr.new(a)
    local addr = C.Allocate(pt)
@@ -446,7 +475,7 @@ function C.Cst(constant)
    return C.Obj(constant)
 end
 function C.List(tab) -- tab is uhhh {string}
-
+   return C.Obj(tab)
 end
 C.Uninitialized = C.Object.new
 function C.TypeOf(n)
