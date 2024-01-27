@@ -1,6 +1,8 @@
 local C = ____C
 if C == nil then C=require('lilac_runtime.C_ffi') end
 NULL = C.Ptr(C.Cst(0))
+---@diagnostic disable-next-line: undefined-global
+local bit32 = bit or bit32 or require('bit32')
 local m = {}
 local function wrap(a,retptr)
    return function(...)
@@ -8,8 +10,8 @@ local function wrap(a,retptr)
       for i,v in next, {...} do
          if C.Object.is(v) then
             v=rawget(v,"real")
-         elseif C.Pointer.is(v) then
-            v=rawget(v,"obj")
+         -- elseif C.Pointer.is(v) then
+         --    v=rawget(v,"obj")
          end
          n[i]=v
       end
@@ -137,8 +139,8 @@ m.strdup = wrap(function(s)
 end,true)
 -- wcsdupi
 m.stpcpy = wrap(function(s)
-   local size = strlen(s)
-   local p = malloc(size)
+   local size = m.strlen(s)
+   local p = m.malloc(size)
    if p==-1 then return NULL end
    for i=0,size do
       C.Memory[p+i] = C.Memory[s+i]
@@ -160,19 +162,55 @@ m.bzero = wrap(function(block,size)
    for i=0,size do C.Memory[block+i] = 0 end
 end)
 m.malloc = wrap(function(size)
-   local total = count*eltsize
-   local ob = C.Object.new()
-   local fs = C.GetFreeSpace()
-   if fs==-1 then return -1 end
-   rawset(ob,"region",{begin=fs,_end=fs+total})
-   return ob
-end,true)
+   local n = C.Object.new()
+   if C.AllocateSize(n,size) == -1 then return -1 end
+   local aa = C.Ptr(n)
+   print("malloc",require("inspect")(aa))
+   return aa
+end,false)
 m.calloc = wrap(function(count,eltsize)
    local total = count*eltsize
    local ob = C.Obj(("\0"):rep(total))
    rawset(ob,"real",nil)
    return ob
 end,true)
+m.realloc = wrap(function(ptr,size)
+   if size==NULL then return NULL end
+   if ptr==nil then return m.malloc(size) end
+   local oldsize = size
+   local old
+   for _,v in next, C.Objects do
+      if rawget(v,"region") and rawget(v,"region").begin == ptr then
+         oldsize = rawget(v,"region")._end-rawget(v,"region").begin
+         old = v
+         break
+      end
+   end
+   if size<oldsize and old~=nil then
+      C.Free(old)
+      C.AllocateSize(old,size)
+      print("realloc smaller size",require("inspect")(ptr))
+      return ptr
+   else
+      local n = m.malloc(size)
+      if n==-1 then return NULL end
+      print("realloc malloc res:",n)
+      m.memcpy(n,ptr,size)
+      m.free(ptr)
+      print("realloc",require("inspect")(n))
+      return n
+   end
+end,false)
+m.free = wrap(function(ptr)
+   if ptr~=0 then
+      for _,v in next, C.Objects do
+         if rawget(v,"region") and rawget(v,"region").begin == ptr then
+            C.Free(v);
+            return
+         end
+      end
+   end
+end)
 m.strcat = wrap(function(to,from)
    local l1,l2 = strlen(from),strlen(to)
    for i=0,l1 do
@@ -402,7 +440,7 @@ m.strtok_r = wrap(function(new,delim,save)
 end,true)
 -- TODO: strsep, also rework above 2 for the storage
 -- TODO: basename + dirname
-m.explicit_bzero = bzero
+m.explicit_bzero = m.bzero
 -- TODO: in the kitchen, wrist twistin' like it's strfry
 m.memfrob = wrap(function(mem,length)
    for i=0,length do
@@ -412,9 +450,11 @@ m.memfrob = wrap(function(mem,length)
 end,true)
 m.l64a = wrap(function(n)
    if n==0 then return "" end
+---@diagnostic disable-next-line: undefined-global
    return base64e(C.Read("char[4]",n))
 end,true)
 m.a64l = wrap(function(n)
+---@diagnostic disable-next-line: undefined-global
    return base64d(C.Read("char[4]",n))
 end,true)
 -- BIG TODO: argz + envz

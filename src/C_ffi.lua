@@ -1,5 +1,5 @@
 ---@diagnostic disable: redefined-local
-if ___C~=nil then return ____C end
+if ____C~=nil then return ____C end
 local function find(a,b)
    for i,v in next, a do if rawequal(v,b) then return i end end
 end
@@ -30,27 +30,53 @@ do
       return -rawget(self,"real")
    end
    function objmt:__add(o)
-      if not obj.is(self) and obj.is(o) then self,o = o,self end
-      if obj.is(o) then
-         return rawget(self,"real")+rawget(o,"real")
-      elseif ptr.is(o) then
-         return rawget(self,"real")+rawget(o,"obj")
+      if obj.is(self) then
+         if obj.is(o) then
+            return rawget(self,"real")+rawget(o,"real")
+         elseif ptr.is(o) then
+            return rawget(self,"real")+rawget(o,"obj")
+         else
+            return rawget(self,"real")+o
+         end
+         error("ummm.... ("..type(o)..")")
       else
-         -- print(rawget(self,"real"),type(o))
-         return rawget(self,"real")+o
+         if obj.is(o) then
+            return self+rawget(o,"real")
+         elseif ptr.is(o) then
+            return self+rawget(o,"obj")
+         else
+            -- print(rawget(self,"real"),type(o))
+            return self+o
+         end
+         error("ummm.... ("..type(o)..")")
       end
-      error("ummm.... ("..type(o)..")")
    end
    function objmt:__sub(o)
-      if not obj.is(self) and obj.is(o) then self,o = o,self end
-      if obj.is(o) then
-         return rawget(self,"real")-rawget(o,"real")
-      elseif ptr.is(o) then
-         return rawget(self,"real")-rawget(o,"obj")
+      if obj.is(self) then
+         if obj.is(o) then
+            return rawget(self,"real")-rawget(o,"real")
+         elseif ptr.is(o) then
+            return rawget(self,"real")-rawget(o,"obj")
+         else
+            -- print(rawget(self,"real"),type(o))
+            return rawget(self,"real")-o
+         end
+         error("ummm.... ("..type(o)..")")
       else
-         return rawget(self,"real")-o
+         if obj.is(o) then
+            return self-rawget(o,"real")
+         elseif ptr.is(o) then
+            return self-rawget(o,"obj")
+         else
+            -- print(rawget(self,"real"),type(o))
+            return self-o
+         end
+         error("ummm.... ("..type(self)..")")
       end
-      error("ummm.... ("..type(o)..")")
+   end
+   function objmt:__call(...)
+      if not obj.is(self) then error("not obj.... what do you want me to call??") end
+      return rawget(self,"real")(...)
    end
    function objmt:__lt(o)
       if not obj.is(self) and obj.is(o) then self,o = o,self end
@@ -188,6 +214,27 @@ local C;C = {
             return size*C.SizeOfTypeStr(org:match("(.+)%[%d*%]$"))
          end
       end};
+      {'{(.*)}',function(types)
+         local brackets = 0
+         local last = 1
+         local todo = {}
+         for i=1,#types do
+            local c = types:sub(i,i)
+            if c=="{" then
+               brackets=brackets+1
+            elseif c=="}" then
+               brackets=brackets-1
+            elseif c=="," and brackets==0 then
+               table.insert(todo,types:sub(last,i-1))
+               last=i+1
+            end
+         end
+         local sum = 0
+         for _,v in next, todo do
+            sum=sum+C.SizeOfTypeStr(v)
+         end
+         return sum
+      end};
       {'Ptr',4},
       {'char',1},
       {'byte',1},
@@ -220,11 +267,26 @@ function C.Serialize(t)
       return (("%s%04x"):format((t<0 and "-" or ""),math.abs(t)):gsub("%x%x",function(a) return string.char(tonumber(a,16)) end))
    elseif type(t)=="table" then
       -- assume array
-      local s = ""
-      for _,v in next, t do
-         s=s..C.Serialize(v)
+      local is_array = true
+      local base
+      for i,v in next, t do
+         if base==nil then base=type(v) end
+         if type(v)~=base or type(i)~="number" then is_array=false; break end
       end
-      return s
+      if is_array then
+         local n = C.Serialize(#t)
+         for _,v in next, t do
+            n=n..C.Serialize(v)
+         end
+         return n
+      else
+         -- BETTER not be a dictionary, and instead a mixed array
+         local n = ""
+         for _,v in next, t do
+            n=n..C.Serialize(v)
+         end
+         return n
+      end
    end
    return "void"
 end
@@ -239,13 +301,13 @@ function C.SerializeByType(v,t)
       local mat = {};
       ("%02x"):format(v):gsub("%x%x",function(a) table.insert(mat,a) end);
       return mat
-   -- elseif t=="table" then
-   --    -- assume array
-   --    local s = ""
-   --    for _,v in next, t do
-   --       s=s..C.Serialize(v)
-   --    end
-   --    return s
+   elseif t:sub(-2)=="[]" then
+      -- assume array
+      local s = {}
+      for _,v in next, t do
+         table.insert(s,C.Serialize(v))
+      end
+      return s
    end
    return {}
 end
@@ -298,12 +360,12 @@ end
 function C.Read(typ,ptr)
    local len = 0
    if typ=="char[]" then
-      while C.Memory[len]~=0 do
+      while C.Memory[ptr+len]~=0 do
          len=len+1
       end
       len=len+1
    else
-      len = C.SizeOfType(len)
+      len = C.SizeOfTypeStr(typ)
    end
    return C.Deserialize(typ,{(unpack or table.unpack)(C.Memory,ptr,ptr+len)})
 end
@@ -334,13 +396,20 @@ function C.SizeOfValue(obj)
    return -1
 end
 function C.Set(a,b)
+   if ptr.is(a) then
+      print("ptrset",a,require("inspect")(a))
+      if not obj.is(rawget(a,"obj")) then
+         rawset(a,"obj",obj.new(rawget(a,"obj")))
+      end
+      a=rawget(a,"obj")
+   end
    if rawget(a,"region") == nil then
       -- uninitialized
-      local add = C.Allocate(a)
+      local ser = C.Serialize(b)
+      local add = C.AllocateSize(a,#ser)
       if add==-1 then
          return -1
       end
-      local ser = C.Serialize(b)
       for i=1,#ser do
          C.Memory[add+i-1] = ser:sub(i,i):byte()
       end
@@ -398,6 +467,7 @@ function C.Allocate(obj)
    end
    table.insert(C.Objects,obj)
    rawset(obj,"region",{begin=position,_end=position+size})
+   if ptr.is(obj) then rawset(obj,"addr",position) end
    return position
 end
 function C.AllocateSize(obj,size)
@@ -409,6 +479,7 @@ function C.AllocateSize(obj,size)
    end
    table.insert(C.Objects,obj)
    rawset(obj,"region",{begin=position,_end=position+size})
+   if ptr.is(obj) then rawset(obj,"addr",position) end
    return position
 end
 function C.Free(obj)
@@ -419,8 +490,12 @@ function C.Free(obj)
    return 0
 end
 function C.AddressOf(ob)
-   if rawget(ob,"region")~=nil then
-      return rawget(ob,"region").begin
+   if obj.is(ob) then
+      if rawget(ob,"region")~=nil then
+         return rawget(ob,"region").begin
+      end
+   elseif ptr.is(ob) then
+      return rawget(ob,"addr")
    end
    return -1
 end
@@ -469,21 +544,39 @@ function C.Ptr(a)
    return pt
 end
 function C.Str(str)
-   return C.Ptr(C.Obj(str))
+   return C.Ptr(C.Obj(str.."\0"))
 end
 function C.Cst(constant)
    return C.Obj(constant)
 end
-function C.List(tab) -- tab is uhhh {string}
-   return C.Obj(tab)
+function C.List(tab,ptr) -- tab is uhhh {string}
+   local ntab = {}
+   for i=1,#tab do
+      if ptr==nil or ptr then
+         ntab[i-1] = C.Ptr(C.Obj(tab[i]))
+      else
+         ntab[i-1] = C.Obj(tab[i])
+      end
+   end
+   return C.Obj(ntab)
 end
-C.Uninitialized = C.Object.new
+function C.Unwrap(a)
+   if ptr.is(a) then
+      return rawget(a,"obj")
+   elseif obj.is(a) then
+      return rawget(a,"real")
+   end
+end
+function C.Uninitialized()
+   return obj.new()
+end
 function C.TypeOf(n)
    if obj.is(n) then
       n=rawget(n,"real")
    end
    if ptr.is(n) then
-      return "Ptr<"..C.TypeOf(rawget(n,"obj"))..">"
+      -- stop short, cause issues arrose
+      return "Ptr"--<"..C.TypeOf(rawget(n,"obj"))..">"
    end
    if type(n)=="string" then
       return "char["..#n.."]"
@@ -495,21 +588,40 @@ function C.TypeOf(n)
       end
    elseif type(n)=="table" then
       -- assume array
-      local first = ({next(n)})[2]
-      local ty = C.TypeOf(first).."["
-      if type(first)=="string" then
-         local len = 0
-         for i,v in next, n do
-            len=math.max(len,#v)
+      local is_array = true
+      local base
+      for i,v in next, n do
+         if base==nil then base=type(v) end
+         if type(v)~=base or type(i)~="number" then is_array=false; break end
+      end
+      if is_array then
+         local first = ({next(n)})[2]
+         local ty = C.TypeOf(first).."["
+         if type(first)=="string" then
+            local len = 0
+            for _,v in next, n do
+               if type(v)=="string" then
+                  len=math.max(len,#v)
+               end
+            end
+            ty="char["..len.."]["
          end
-         ty="char["..len.."]["
+         local c = 0
+         for _ in next, n do
+            c=c+1;
+         end
+         ty=ty..c.."]"
+         return ty
+      else
+         -- BETTER not be a dictionary, and instead a mixed array
+         local s = "{"
+         for i,v in next, n do
+            if i~=1 then s=s.."," end
+            s=s..C.TypeOf(v)
+         end
+         s=s.."}"
+         return s
       end
-      local c = 0
-      for _ in next, n do
-         c=c+1;
-      end
-      ty=ty..c.."]"
-      return ty
    -- else
    --    print(type(n),require("inspect")(n))
    end
